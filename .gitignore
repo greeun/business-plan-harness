@@ -14,3 +14,27 @@ logs/
 
 # Blog post (published separately on personal blog)
 blog-post.md
+
+# Harness demo output (generated artifacts, do not track)
+business-plan/
+
+# superpowers (auto-installed; do not track)
+.superpowers/
+docs/superpowers/
+
+# >>> skill-artifacts (auto; do not commit skill-generated output)
+.DS_Store
+/runs/
+/output/
+/outputs/
+/out/
+/generated/
+/.tmp/
+/tmp/
+__pycache__/
+.pytest_cache/
+*-run/
+*-runs/
+*-output/
+# <<< skill-artifacts
+.claude/
