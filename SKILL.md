@@ -1,516 +1,215 @@
 ---
 name: business-plan-harness
-description: Generate rigorous business plans using a Planner → Generator → Evaluator harness adapted from Anthropic's "Harness Design for Long-Running Application Development" (Prithvi Rajasekaran, Mar 24 2026). Use when the user wants to draft, iterate, or validate a business plan, go-to-market strategy, startup plan, or venture brief. Trigger phrases — English: "business plan", "startup plan", "venture plan", "GTM plan", "go-to-market strategy", "plan for my business idea", "draft a business plan", "validate my business idea", "business model canvas". Korean (한글): "사업계획", "사업 계획서", "사업 기획", "사업 기획서", "사업 전략", "사업 아이템", "사업 아이템 검증", "사업 주제 분석", "창업 계획", "창업 기획서", "창업 아이디어", "비즈니스 플랜", "비즈니스 계획", "비즈니스 모델", "스타트업 계획", "스타트업 기획", "시장 진입 전략", "GTM 전략", "사업 제안서", "벤처 계획", "사업계획서 작성", "사업 검증", "사업 아이디어 평가".
+description: 3-agent GAN harness (Planner→Generator→Evaluator) turning a short business idea or requirements into an investor-ready / startup-ready business plan or full deliverable package. User picks 1 of 5 modes (Lean business plan / Standard plan / Investor IR / Gov-grant·startup-program form / Full package), then 4 research sprints run (market·competition·ecosystem → problem·customer·persona → business-model·unit-economics·financials → integration) with per-sprint contracts, quality gates, and an adversarial Evaluator + rubric. Mode 5 emits a ~16-deliverable set (business-model·plan·market·competition·persona·value-prop·roadmap·pricing·GTM·operations·team·financial-model·funding·risk·milestones). Infographic-first: best-fit visual per deliverable (BMC·TAM-SAM-SOM·ecosystem map·money flow·unit-economics·competition matrix·funnel·Gantt·cap table·risk heatmap·journey) as ASCII in `.md` and inline SVG/CSS in self-contained offline HTML. Use when asked — Korean: "사업계획", "사업 계획서", "사업계획서 작성", "사업 기획", "창업 계획", "창업 기획서", "투자유치", "IR 자료", "사업 아이템 검증", "비즈니스 플랜", "비즈니스 모델", "사업 전략", "GTM 전략", "정부지원사업", "창업지원사업", "사업 패키지"; English: "business plan", "startup plan", "venture plan", "investor deck plan", "GTM strategy", "business model canvas", "validate my business idea", "draft a business plan", "full business plan package". Deliverable language user-selectable (default Korean).
 ---
 
 # Business Plan Harness
 
-This skill produces a high-quality business plan for a user-supplied topic
-by operating a three-role harness (Planner → Generator → Evaluator). The
-methodology is a direct port of the article below; every factual point,
-principle, example, number, and lesson from the source is preserved in the
-**Source Reference** section so the harness can be applied faithfully.
+A GAN-style 3-agent harness that takes a short business idea (1–4 sentences) and produces a **business plan (사업계획서)** a founding team or an investor can act on immediately. Planner → Generator → Evaluator are each dispatched as separate `Agent` calls (GAN anti-omission-bias). **Full tier**: it runs 4 research sprints with per-sprint contract negotiation + quality gates, and runs per-sprint + a final integrated Evaluator pass.
+
+> Skill-authoring language is English. The **generated deliverable** is written in the user-selected output language (STEP 1-c; default Korean). Korean trigger phrases are intentional — the skill must still activate on Korean requests.
+
+The methodology is a direct port of Anthropic's "Harness Design for Long-Running Application Development" (Prithvi Rajasekaran, Mar 24 2026). The full source inventory + the code-harness→business-plan operational mapping live in `references/source-article.md` (read it to apply the methodology faithfully).
+
+## Core design intent (why Full tier)
+
+A business plan requires **research-phase decomposition + per-phase quality gating**. Stacking a plan on top of weak market research / problem definition / financial assumptions makes differentiation (C2) and feasibility·unit-economics soundness (C3) collapse structurally. So S4 synthesizes the plan **only after** the Evaluator passes the S1–S3 research through gates. This gating is not for context relief — it is an orthogonal quality mechanism. (See the model-guidance section — Opus 4.8 has effectively no context anxiety, yet Full was chosen deliberately.)
+
+## Reference files (references/)
+
+| File | Role |
+|------|------|
+| `references/source-article.md` | Full source-article inventory (Rajasekaran 2026) + code-harness→business-plan operational mapping. The methodology's source of truth. |
+| `references/planner-prompt.md` | Planner prompt — handle mode selection + write spec.md/sprint-playbook.md |
+| `references/generator-prompt.md` | Generator prompt — per-sprint contract negotiation + production + self-verify |
+| `references/evaluator-prompt.md` | Evaluator prompt — per-sprint + final pass, adversarial probes, verdict logic |
+| `references/rubric.md` | 4 criteria (C1–C4), weights (C2/C3 2×), justification, verdict logic |
+| `references/evaluator-calibration.md` | few-shot 1/3/5 anchors (C1–C4) — scoring calibration |
+| `references/sprint-playbook.md` | 4-sprint plan, deliverables, mode-adapted scope, observable checks |
+| `references/mode-templates.md` | document-structure skeletons for the 5 output modes (incl. Mode 5 full-package 16 deliverables) |
+| `references/html-doc-template.md` | render each deliverable `.md` as readable/shareable/reviewable HTML + hub `index.html`. ASCII diagrams converted to inline-SVG graphics + per-section infographics + generated images. Included in the STEP 1-b default ("Both") |
+| `references/html-visual-template.md` | render the final deliverables as a self-contained, diagram-rich HTML dashboard (BMC·money flow·unit-economics·ecosystem map·competition matrix·funnel·cap table·Gantt·risk heatmap + topic-specific invented visualizations), all inline SVG/CSS + generated images where available (Mermaid discouraged). The `overview.html` of the default "Both" / the `index.html` of "Dashboard only" |
+
+## 5 output modes
+
+| Mode | Name | Gist |
+|------|------|------|
+| 1 | Lean business plan [default/recommended] | Minimal 1-pager / BMC-centric plan. Light S3 financials, no full 5-year model. |
+| 2 | Standard business plan | + full narrative: market / competition / value prop / business model / GTM / operations / financials / risk. |
+| 3 | Investor IR plan | + emphasis on market size, financial model (3–5yr), unit economics, funding ask / use-of-funds, team. |
+| 4 | Gov-grant · startup-program form | Structured to the standard evaluation axes (problem·feasibility·growth potential·team·budget plan). Form-fit. |
+| 5 | Full business plan package | A 5-stage ~16-deliverable set (discovery·strategy·definition·GTM/ops·finance/funding) + a **final visual HTML dashboard (`index.html`)**. After S1–S3 research, S4 expands into multi-document generation (g1~g6). Not a single business-plan.md but a numbered document set under `docs/` + diagram-rich visualization HTML. |
+
+For detailed section structures see `references/mode-templates.md`. Mode 5's deliverable list and document skeletons are defined there too.
+
+## 4 research sprints (fixed, scope variable)
+
+| Sprint | Name | Deliverable | Feeds | Mode adaptation |
+|--------|------|-------------|-------|-----------------|
+| S1 | research / market·competition·ecosystem | `research-s1.md` | C2, G-c/G-g | ecosystem+participant description·ecosystem map always included; Mode 3 expanded (TAM/SAM/SOM·segments·trends·regulation); otherwise at least 1 named competitor |
+| S2 | problem·customer·persona | `research-s2.md` | C1, G-a/G-b | Mode 1 lean (1 persona); others may have multiple |
+| S3 | business-model·unit-economics·financial hypotheses | `research-s3.md` | C3/C4, G-d/G-h | Mode 1 light (BMC + back-of-envelope unit economics); Mode 3/5 heaviest (3–5yr model, CAC/LTV, BEP, funding) |
+| S4 | plan integration | `business-plan.md` | C3, G-a/G-d/G-e/G-g/G-h | integrate S1–S3 into the chosen mode's structure (no new research) |
+
+The 4 sprints **always** run; only each sprint's scope adapts to the mode. **Note the domain swap vs the source code-harness: S3 = business-model·financials (the axis Claude is weak on for a business plan), not UX/screens.** Details in `references/sprint-playbook.md`.
 
 ---
 
-## Input
+## Activation Flow (orchestrator)
 
-Ask the user for one thing only if not already supplied:
+An 8-step flow. STEP 1 = output-mode selection (mandatory gate). The Full-tier 4-sprint loop (STEP 4) has per-sprint contract negotiation + evaluation.
 
-> **Business topic:** a one-paragraph description of the venture, product, or
-> market idea, plus any known constraints (geography, budget, target
-> customer, founder background, timeline).
+### STEP 1 — mode selection + HTML form + output language (mandatory gate)
+On activation, ask the user for and receive **three** things together:
 
-Store the answer as `{{BUSINESS_TOPIC}}` and proceed.
+**(1-a) Output mode** — (1) Lean business plan [default/recommended], (2) Standard business plan, (3) Investor IR plan, (4) Gov-grant·startup-program form, (5) Full business plan package (5-stage ~16 deliverables). If unanswered/ambiguous, **propose** (1) Lean but do not generate before confirmation.
 
----
+**(1-b) HTML output form** (md always preserved; infographic-first, so a diagram dashboard is included by default; `references/html-doc-template.md`):
+- **Both (per-document HTML + diagram-rich dashboard)** [default/recommended] — render each `.md` as readable/shareable/reviewable html (body ASCII diagrams converted to inline-SVG graphics + per-section inline-SVG infographics·generated images shown) + hub `index.html` (links by importance·order·role, reflecting `INDEX.md`) + diagram-rich dashboard `overview.html` (`references/html-visual-template.md`).
+- **Visual dashboard only** — `index.html` = diagram-rich dashboard only (`references/html-visual-template.md`).
+- **Per-document HTML only** — each `.md` → readable html (ASCII diagrams·inline SVG·generated images) + hub, dashboard omitted.
+- **None (md only)** — skip HTML. (But the md body's infographics/diagrams [ASCII·matrices·generated images where available] are always embedded — G-g.)
 
-## Source Reference — Full Article Inventory
+**(1-c) Deliverable output language** — the language the generated deliverable is written in: **Korean [default]** or **English**. (The skill's own instructions are English; this controls only the produced document's prose/section headings.) If unanswered, default to Korean.
 
-The following is the exhaustive inventory of the source article. It is
-preserved in full so the harness's operation remains faithful to the
-original methodology. Do not drop any item when adapting.
+Freeze the chosen mode, HTML form, and output language into `spec.md` / `sprint-playbook.md`. **Output-location convention: all deliverables are written under the project's `business-plan/`** — Mode 5 → `business-plan/docs/` (numbered 16 `.md` + optional HTML + `INDEX.md`), Modes 1–4 → `business-plan/` (`business-plan.md` + optional HTML). Harness intermediate files (`spec.md`·`sprint_contract.md`·`research-s*.md`·`critique.md`·`handoff.md`) live in the same working tree. **Mode 5 is multi-deliverable**, so STEP 4 S4 expands per deliverable-group and the STEP 7 financial-assumption checkpoint almost always fires (financial model + funding included).
 
-### Publication
-- Title: "Harness design for long-running application development"
-- Author: Prithvi Rajasekaran (Member of Anthropic Labs team)
-- Published: Mar 24, 2026
-- Publisher: Anthropic (engineering blog)
+### STEP 2 — intake
+Receive the 1–4 sentence business idea/requirements + any known constraints (geography, budget, target customer, founder background, timeline). If too vague, ask back about only 1–2 essentials and proceed (no over-questioning). If still vague, the Planner forms the single sharpest hypothesis and records it as an assumption in spec/playbook.
 
-### Core problem the article addresses
-- Getting Claude to produce high-quality frontend designs.
-- Getting Claude to build complete applications without human intervention.
-- Earlier efforts on a frontend design skill and a long-running coding
-  agent harness hit performance ceilings.
+### STEP 3 — dispatch Planner
+Run the Planner once via an `Agent` call on `references/planner-prompt.md`. It writes `spec.md` with the frozen mode's section structure and **writes the 4-sprint plan + each sprint's mode-adapted scope into `sprint-playbook.md`**. Returns: `SPEC_READY: spec.md` + `PLAYBOOK_READY: sprint-playbook.md`.
 
-### Key inspiration and approach
-- Inspired by Generative Adversarial Networks (GANs).
-- Core design: multi-agent structure with generator and evaluator agents.
-- Central challenge: converting subjective judgments ("is this design
-  good?") into concrete, gradable criteria.
+### STEP 4 — 4-sprint loop (S1→S2→S3→S4, each sprint cap 5–15)
+For each sprint in order:
 
-### Identified failure modes
+- **4a — contract negotiation**: The Generator (`Agent` call, `references/generator-prompt.md`) proposes that sprint's `sprint_contract.md` (scope + observable checks + output file/format). Dispatch the Evaluator (`Agent` call, `references/evaluator-prompt.md`, Mode A1) to **approve/amend** the contract. If the checks are weak, the Evaluator strengthens them. **No build before approval (safety gate).**
+- **4b — sprint build**: Dispatch the Generator via an `Agent` call. It produces that sprint's deliverable (`research-s1.md`/`-s2.md`/`-s3.md`, or S4's `business-plan.md`) and `generator_report.md`, self-verifying before handoff. Returns: `READY_FOR_QA`, or `HANDOFF_NEEDED` (→ 4d), or `DEADLOCK` (→ STEP 8).
+- **4c — sprint evaluation**: Dispatch the Evaluator (`Agent` call, Mode A2) to produce `critique.md` against that sprint's observable checks + sprint-relevant probes/gates. On `PASS`, advance to the next sprint; on `FAIL` and round < cap, retry the same sprint (applying the Generator's Strategic Decision: REFINE/PIVOT); on `FAIL` and round = cap, transparently record the unresolved issues and get the user's judgment on whether to advance.
+- **4d — context handoff**: On `HANDOFF_NEEDED`, resume the sprint with a fresh Generator session reading only `handoff.md`. **No compaction** — compaction preserves the anxiety state, so it is forbidden as a recovery path (reset ≠ compaction).
 
-**Context-related issues**
-- Models lose coherence on lengthy tasks as the context window fills.
-- "Context anxiety" behavior: models wrap up work prematurely because
-  they believe they are approaching the context limit.
-- Solution: context resets — clearing the context window entirely and
-  starting a fresh agent with a structured handoff.
-- Distinction from compaction: compaction preserves continuity but does
-  not provide a clean slate; context anxiety persists through compaction.
-- Finding: Claude Sonnet 4.5 exhibited context anxiety strongly enough
-  that compaction alone was insufficient.
-- Context resets add orchestration complexity, token overhead, and
-  latency.
+### STEP 5 — final integrated Evaluator pass
+After S4, dispatch the Evaluator (Mode B) via an `Agent` call to run **the 4-axis rubric + all adversarial probes + all §8 gates** on the integrated `business-plan.md`, producing `critique.md`. Returns: `CRITIQUE_READY: critique.md`.
 
-**Self-evaluation problem**
-- Agents confidently praise their own work even when quality is mediocre.
-- Particularly pronounced for subjective tasks like design (no binary
-  verification equivalent).
-- Solution: separate the agent doing the work from the agent judging it.
-- Tuning a standalone evaluator to be skeptical is more tractable than
-  making the generator self-critical.
+### STEP 6 — verdict branching
+- `PASS` (all ≥4, 2×(C2/C3) ≥4, probes clean, all §8 pass) → STEP 7.
+- `FAIL` → if the gap is attributable to a specific sprint deliverable, return to that sprint (STEP 4, within cap); if it's an integration-stage gap, retry S4. If the overall cap is reached, transparently report the current best version + unresolved blocking issues.
 
-### Frontend design harness — four grading criteria
-1. **Design quality.** Whether the design reads as a coherent whole —
-   colors, typography, layout, and imagery combining into a distinct
-   mood and identity — rather than a disconnected collection of parts.
-2. **Originality.** Whether the work shows deliberate, custom creative
-   decisions rather than template layouts, library defaults, and
-   recognizable AI-generated patterns (e.g. stock gradient-over-card
-   motifs). A human designer should see intent behind the choices.
-3. **Craft.** Technical execution — typography hierarchy, spacing
-   consistency, color harmony, contrast — assessed as competence
-   rather than creativity.
-4. **Functionality.** Usability independent of aesthetics: whether
-   users can understand the interface, find primary actions, and
-   complete tasks without guessing.
+### STEP 7 — conditional financial-assumption human-checkpoint (most relevant right after S3/S4)
+Check whether `research-s3.md` / `business-plan.md` / `30-financial-model.md` contains a **financial model / funding-ask / key-assumption block** (market size, conversion rate, price, CAC/LTV, runway, use-of-funds).
+- **Not present (Mode 1 generally, light financials)** → **skip** the checkpoint, fully automatic, proceed to STEP 8.
+- **Present (Modes 3/5, and Mode 2/4 when a model is included)** → **ask the user to review·approve the key financial assumptions** (the input numbers the projections rest on), and do not confirm the final PASS before approval. The plan's text/logic PASSes normally; the assumption block is marked `HUMAN_CHECKPOINT_REQUIRED` and surfaced to the user.
 
-**Weighting strategy**
-- Emphasized design quality and originality over craft and functionality.
-- Claude scored well on craft and functionality by default.
-- Criteria explicitly penalized generic "AI slop" patterns.
-- Language like "the best designs are museum quality" steered the
-  generator toward a particular visual convergence.
+> Rationale for this gate: an LLM can read every word of a text deliverable and judge its internal consistency (the Evaluator enforces G-h financial-coherence on the math). But the **input assumptions** a financial model rests on — realistic market capture, achievable conversion/CAC, defensible price, the founder's actual runway and risk appetite — depend on the founder's real domain knowledge and risk preference, which the LLM cannot confirm alone. So a human checkpoint is inserted only for the assumption inputs (the math/consistency is still scored automatically by G-h). "The Evaluator will handle it" is not allowed for the input assumptions — approving them is the founder's call. (This is the business-plan analog of the source harness's wireframe visual-craft human checkpoint.)
 
-**Implementation details**
-- Built on Claude Agent SDK.
-- Generator created HTML/CSS/JS frontend based on user prompt.
-- Evaluator given Playwright MCP for live page interaction.
-- Evaluator navigated pages independently, taking screenshots before
-  scoring.
-- Iteration count: 5 to 15 iterations per generation.
-- Wall-clock time: full runs stretched up to four hours.
-- After each evaluation the generator made a strategic decision: refine
-  direction if scores were trending well, or pivot to a different
-  aesthetic if the approach was not working.
-- Evaluator calibrated with few-shot examples containing detailed score
-  breakdowns.
+### STEP 7.5 — HTML render (branches on the STEP 1-b choice; md always preserved)
+Render the PASSed final deliverable into HTML in the form chosen at STEP 1-b. **All HTML generates no new content — only faithfully convert/visualize the existing `.md` deliverables** (money rules cite the single source `00-business-model`). Readable HTML preserves the md's ASCII diagrams (monospace), promotes md data into **inline SVG/CSS infographics**, and displays generated image assets (`assets/`). **No external-renderer dependency (Mermaid discouraged) — every visualization is self-contained.** If a financial-assumption block is included, render after the STEP 7 human checkpoint clears.
+- **Both** [default]: per `references/html-doc-template.md`, each `.md` → readable `NN-name.html` + hub `index.html` (nav from `INDEX.md`'s importance·order·role) **+ diagram-rich dashboard `overview.html`** (`references/html-visual-template.md`).
+- **Visual dashboard only**: `index.html` = diagram dashboard (`references/html-visual-template.md`). Fill the visualization catalog (BMC·money flow·unit-economics·TAM-SAM-SOM·ecosystem map·competition matrix·positioning·persona journey·value loop·AARRR funnel·GTM timeline·org chart·financial trend·cap table·use-of-funds·risk heatmap·milestone Gantt·KPI gauges, plus topic-specific invented visualizations) with real data, all inline SVG/CSS + generated images where available.
+- **Per-document HTML only**: the "Both" above minus `overview.html`.
+- **None**: skip HTML (md only — but the md body's infographics/diagrams are always embedded).
 
-**Key findings**
-- Evaluator assessments improved over iterations before plateauing.
-- The pattern was not always cleanly linear — middle iterations were
-  sometimes preferred over the final ones.
-- Implementation complexity tended to increase across rounds.
+### STEP 7.6 — importance-grouping·order guide (Mode 5, after all documents written)
+In Mode 5, after all deliverables (16 + `index.html`) are complete, **generate `INDEX.md` last** (`references/mode-templates.md` "INDEX.md generation rules", sprint-playbook S4-g7). Include: ① 3-tier importance (T1 essential / T2 conditional / T3 supplementary, judged per domain) ② work order (dependency-based) ③ per-role bundles (Founder/Investor/Marketing-Sales/Operations) ④ minimal start set (Lean 5). Don't make documentation theater — only classify·sort by actual need, no new content.
 
-**Dutch Art Museum example**
-- By iteration 9: clean, dark-themed landing page.
-- Iteration 10: scrapped the approach entirely and reimagined it as a
-  spatial experience with a 3D room (CSS perspective checkered floor),
-  free-form artwork positioning, and doorway-based navigation between
-  gallery rooms.
-- Described as a "creative leap" not seen before from single-pass
-  generation.
+### STEP 8 — deliver/finish
+Deliver the final output (Mode 5 = `docs/` 16 `.md` + `INDEX.md` + STEP 1-b HTML). The original `.md` is always preserved. On `DEADLOCK`, summarize both sides' positions and request the user's judgment. Always also produce `assumptions_and_risks.md` — every unverified claim / `ASSUMPTION:`-labeled number the plan depends on, collected in one place.
 
-### Full-stack coding harness — three-agent architecture
+### User-confirmation gate summary
+(a) no generation before the STEP 1 mode is confirmed; (b) no build before the STEP 4a contract is approved; (c) no final PASS before user approval when STEP 7 financial-assumption block is present; (d) transparent reporting of unresolved issues when the cap is reached.
 
-**Planner agent**
-- Takes a simple 1–4 sentence prompt.
-- Expands it into a full product spec.
-- Instructed to be ambitious about scope.
-- Stays focused on product context and high-level technical design
-  rather than detailed implementation.
-- Avoids granular technical details to prevent cascading errors.
-- Asked to weave AI features into the product spec.
-- Had access to the frontend design skill.
-
-**Generator agent**
-- One-feature-at-a-time approach carried over from the earlier harness.
-- Works in sprints, picking up one feature at a time from the spec.
-- Stack: React, Vite, FastAPI, SQLite (later PostgreSQL).
-- Self-evaluates its work at the end of each sprint before handing off
-  to QA.
-- Uses git for version control.
-
-**Evaluator agent**
-- Uses Playwright MCP to click through the running application the way
-  a user would.
-- Tests UI features, API endpoints, and database states.
-- Grades each sprint against bugs found and the evaluation criteria.
-- Criteria adapted from the frontend experiment: product depth,
-  functionality, visual design, code quality.
-- Each criterion has a hard threshold; failure on any means the sprint
-  fails.
-- Provides detailed feedback on what went wrong.
-- Sprint contract negotiation: generator and evaluator agree on what
-  "done" means before any code is written. The generator proposes what
-  will be built and how success will be verified; the evaluator reviews
-  to ensure the right thing is being built. The two iterate until
-  agreement.
-- Communicates via files: agents read and write files to pass
-  information between themselves.
-
-### Opus 4.5 implementation
-
-**Model context handling**
-- Opus 4.5 largely removed context anxiety behavior.
-- Agents run as one continuous session across the whole build.
-- Claude Agent SDK's automatic compaction handles context growth.
-
-**Retro video game maker example — RetroForge**
-
-*Solo run (baseline)*
-- Duration: 20 minutes.
-- Cost: $9.
-- Output issues:
-  - Layout wasted space with fixed-height panels.
-  - Workflow rigid, did not guide the user toward necessary sequences.
-  - Game broken: entities appeared on screen but nothing responded to
-    input.
-  - Entity wiring between definitions and runtime broken with no surface
-    indication.
-
-*Full harness run*
-- Duration: 6 hours.
-- Cost: $200 (over 20× more expensive than the solo run).
-- Planner expanded a one-sentence prompt into a 16-feature spec across
-  ten sprints.
-- Additional features beyond the solo run: sprite animation system,
-  behavior templates, sound effects, music, AI-assisted sprite
-  generator, level designer, game export with shareable links.
-- Advantages over the solo run:
-  - More polish and smoothness.
-  - Canvas used the full viewport.
-  - Sensibly sized panels.
-  - Consistent visual identity tracking the design direction.
-  - Richer, more featured sprite editor.
-  - Cleaner tool palettes.
-  - Better color picker.
-  - More usable zoom controls.
-  - Built-in Claude integration for AI-generated game parts.
-  - Playable game with working entity movement.
-  - Physics had rough edges but the core feature worked (unlike the solo
-    run).
-
-**Evaluator performance issues and tuning**
-- Out of the box, Claude was a poor QA agent.
-- Identified legitimate issues, then talked itself into deciding they
-  were not a big deal.
-- Tested superficially rather than probing edge cases.
-- Tuning loop: read evaluator logs, found examples of judgment
-  divergence, updated the QA prompt.
-- It took several rounds of the development loop before evaluator
-  grading was reasonable.
-- Remaining limitations: small layout issues, unintuitive interactions,
-  undiscovered bugs in nested features.
-- More verification headroom available with further tuning.
-- Compared to the solo run, there was an obvious lift.
-
-**Example contract issues caught by the evaluator**
-
-| Criterion | Finding |
-|---|---|
-| Rectangle fill tool allows click-drag to fill a rectangular area with the selected tile | FAIL — tool only places tiles at drag start/end points. `fillRectangle` function exists but is not triggered properly on mouseUp. |
-| User can select and delete placed entity spawn points | FAIL — delete key handler requires both `selection` and `selectedEntityId` set, but clicking an entity only sets `selectedEntityId`. |
-| User can reorder animation frames via API | FAIL — `PUT /frames/reorder` route is defined after the `/{frame_id}` routes; FastAPI matches "reorder" as integer `frame_id` and returns 422. |
-
-### Harness iteration and simplification
-
-**Core principle**
-- Every component of a harness encodes an assumption about what the
-  model cannot do on its own. Those assumptions are worth stress-testing
-  because they may be wrong to begin with and because they go stale as
-  models improve.
-
-**Referenced principle**
-- Start with the simplest solution that works and only add complexity
-  when it is actually needed.
-
-**First simplification attempt**
-- Cut the harness back radically.
-- Tried creative new ideas.
-- Could not replicate the original performance.
-- Difficult to determine which pieces were load-bearing.
-- Moved to a methodical approach: remove one component at a time.
-
-### Opus 4.6 release impact
-- Further motivation to reduce harness complexity.
-- Expected 4.6 would need less scaffolding than 4.5.
-- 4.6 is described as planning more carefully, sustaining agentic work
-  over longer horizons, operating more reliably in large codebases, and
-  catching more of its own mistakes through stronger code review and
-  debugging behavior.
-- 4.6 also improved substantially on long-context retrieval.
-- All capabilities the harness was built to supplement.
-
-### Removing the sprint construct
-- Sprint construct removed entirely from the updated harness.
-- Sprint structure had helped decompose work for coherent model
-  execution.
-- Opus 4.6 improvements suggested the model could handle the work
-  without decomposition.
-- Planner and evaluator kept because each continued to add obvious
-  value.
-- Without a planner: the generator under-scoped and created less
-  feature-rich applications.
-- Evaluator moved to a single pass at the end rather than per-sprint
-  grading.
-- Key insight: evaluator usefulness depends on task position relative
-  to model baseline.
-- On 4.5 the evaluator caught meaningful issues across the build (the
-  boundary was at the edge of capability).
-- On 4.6 raw capability increased and the boundary moved outward.
-- Tasks that once needed the evaluator's check are now within native
-  generator capability.
-- For tasks at the edge of capability, the evaluator continues to give
-  real lift.
-- Implication: the evaluator is not a fixed yes/no decision — it is
-  worth its cost when the task is beyond reliable solo performance.
-
-### Prompting improvements
-- Prompting added to improve how the harness builds AI features into
-  apps.
-- Focused on getting the generator to build a proper agent that drives
-  app functionality through tools.
-- Required real iteration because recent training data coverage was
-  thin.
-- With enough tuning the generator built agents correctly.
-
-### Updated harness results — DAW (Digital Audio Workstation)
-
-Prompt: "Build a fully featured DAW in the browser using the Web Audio
-API."
-
-| Agent & phase | Duration | Cost |
-|---|---|---|
-| Planner | 4.7 min | $0.46 |
-| Build (Round 1) | 2 hr 7 min | $71.08 |
-| QA (Round 1) | 8.8 min | $3.24 |
-| Build (Round 2) | 1 hr 2 min | $36.89 |
-| QA (Round 2) | 6.8 min | $3.09 |
-| Build (Round 3) | 10.9 min | $5.88 |
-| QA (Round 3) | 9.6 min | $4.06 |
-| **Total V2 harness** | **3 hr 50 min** | **$124.70** |
-
-**Output quality**
-- Builder ran coherently for over two hours without sprint decomposition.
-- Planner expanded a one-line prompt into a full spec from logs.
-- Generator planned the app and agent design well, wired the agent, and
-  tested before handing to QA.
-- QA still caught real gaps in Round 1 feedback: the app had strong
-  design fidelity, a solid AI agent, and good backend, but several core
-  DAW features were display-only without interactive depth — clips could
-  not be dragged or moved on the timeline, there were no instrument UI
-  panels (synth knobs, drum pads), and no visual effect editors (EQ
-  curves, compressor meters).
-- Round 2 QA feedback: audio recording still stub-only (button toggled
-  but no mic capture); clip resize by edge drag and clip split not
-  implemented; effect visualizations were numeric sliders, not graphical
-  (no EQ curve).
-
-**Actual functionality achieved**
-- All core pieces of a functional music production program present.
-- Working arrangement view, mixer, and transport running in the browser.
-- User could put together a short song snippet entirely through
-  prompting.
-- The agent set tempo and key, laid down a melody, built a drum track,
-  adjusted mixer levels, and added reverb.
-- Core primitives for song composition present; the agent could drive
-  the app autonomously using tools.
-- Created a simple production end-to-end.
-- The app was far from a professional program; the agent's song
-  composition skills need work.
-- Claude cannot actually hear, which made the QA feedback loop less
-  effective regarding musical taste.
-
-### Key learnings and future direction
-
-**General principles**
-- Always good practice to experiment with the model you are building
-  against.
-- Read traces on realistic problems.
-- Tune performance to achieve desired outcomes.
-- For complex tasks: decompose the task and apply specialized agents to
-  each aspect.
-- When a new model lands: re-examine the harness, strip away
-  non-load-bearing pieces, and add new pieces for greater capability.
-
-**On model improvement**
-- As models improve, they can handle longer horizons and more complex
-  tasks. In some cases the scaffold around the model matters less and
-  problems resolve themselves with a new model release. At the same
-  time, stronger models open more room for harnesses that push beyond
-  what the raw model can do on its own.
-
-**Author's conviction**
-- The space of interesting harness combinations does not shrink as
-  models improve — it shifts. The ongoing work for AI engineers is to
-  keep finding the next useful combination.
-
-### Acknowledgements (listed in the article)
-Mike Krieger, Michael Agaby, Justin Young, Jeremy Hadfield, David
-Hershey, Julius Tarng, Xiaoyi Zhang, Barry Zhang, Orowa Sidker, Michael
-Tingley, Ibrahim Madha, Martina Long, Canyon Robbins, Jake Eaton, Alyssa
-Leonard, Stef Sequeira.
-
-### Appendix — RetroForge spec example
-- Project: RetroForge — 2D Retro Game Maker.
-- Overview: web-based creative studio for designing and building 2D
-  retro-style video games combining nostalgic 8-bit and 16-bit
-  aesthetics with modern intuitive editing tools.
-- Integrated modules: tile-based level editor, pixel-art sprite editor,
-  visual entity behavior system, playable test mode.
-- AI integration: Claude-powered assistance for sprite generation,
-  level design, and behavior configuration through natural language.
-- Target users: hobbyist creators to indie developers; anyone who loves
-  retro gaming aesthetics and wants modern conveniences.
-- Features include project dashboard and management (create, view,
-  open, delete projects with confirmation, duplicate), and project data
-  model components (metadata, canvas settings, tile size, color
-  palette, sprites/tilesets/levels/entity definitions).
+### Safety gates (domain)
+mode-confirmation gate (STEP 1), per-sprint contract-approval gate (STEP 4a), conditional financial-assumption human-checkpoint (STEP 7), §8 binary verification gates (STEP 4c/STEP 5).
 
 ---
 
-## Operational Mapping — From Code Harness to Business Plan Harness
+## Iteration cap & iteration wisdom
 
-Every concept above maps to an equivalent in the business-plan domain.
-Apply the mapping below when running the harness.
-
-| Source concept | Business-plan equivalent |
-|---|---|
-| GAN-inspired generator/evaluator split | Draft-writer role separated from critic role |
-| Context anxiety | Writer wrapping a plan prematurely because it "feels long enough" |
-| Context resets with structured handoff | `handoff.md` at each sprint boundary, fresh context for next sprint |
-| Distinction from compaction | Do not silently compact — always write an explicit handoff |
-| Sprint contract negotiation | Planner and Generator agree in writing on acceptance criteria before drafting |
-| Design quality | Strategic coherence — problem, solution, customer, model, GTM reinforce each other |
-| Originality | Originality & insight — non-obvious judgment about this specific topic, not boilerplate |
-| Craft | Craft & rigor — numbers internally consistent, claims sourced or labeled ASSUMPTION: |
-| Functionality | Executability — a founding team could act on it next week with concrete first moves |
-| 5–15 iteration count | Expect 5–15 evaluator cycles across the full plan |
-| Playwright MCP probing | Evaluator actively stress-tests assumptions, runs the numbers, checks comparables |
-| Communicates via files | All artifacts are Markdown files in a `business-plan/` directory |
-| Planner ambition + AI features weave-in | Planner must inject differentiation / innovation hooks unique to the topic |
-| Per-sprint grading vs single pass | Default: per-sprint grading. If the topic is narrow and the user opts in, collapse to a single final review |
-| Evaluator tuning loop | Re-read critiques across sprints; tighten criteria if the evaluator is being lenient |
-| "Every harness component encodes an assumption" | Planner may renegotiate sprint contracts in writing if reality shifts |
-| "Simplest solution possible" | Do not add sprints or criteria that the topic does not require |
+- **iteration cap = 5–15 per sprint, default start ~8** — this is a **range, not a single value.** The cap applies per sprint (S1–S4), and the whole run is the sum of the 4 sprints.
+- **Low-end (5) warning**: cutting a sprint too early (e.g. 3 rounds) can miss a **late-round breakthrough**. In the source, the best result came at iteration 10 — "Dutch Art Museum leap at iteration 10". Choosing a low cap risks cutting off such late-iteration breakthroughs (e.g. a pivot to a sharper wedge / a more defensible revenue model).
+- **Wall-clock tolerance**: don't rush artificially. A good plan takes time — don't cut rounds just because progress feels slow.
+- **An intermediate iteration may beat the final**: the Evaluator leaves an **Iteration Quality Note** in `critique.md`, calling out strengths a prior round had. Preserve those in the next round so they aren't lost.
 
 ---
 
-## Roles
+## Principles
 
-### Planner
-- Input: `{{BUSINESS_TOPIC}}` and any user constraints.
-- Output: `spec.md` containing problem statement, target customer, value
-  proposition, differentiators, market and competitive context with
-  named comparables, business-model and unit-economics hypotheses, GTM
-  motion, risks, and an ordered list of sprint contracts each with
-  explicit acceptance criteria.
-- Must weave in differentiation hooks and innovation opportunities
-  specific to the topic (the business-plan analog of "weave AI features
-  into the product spec"). Never output a generic template.
-- Resolves ambiguity explicitly in `spec.md`.
-
-### Generator
-- Input: `spec.md` and the current sprint contract.
-- Output: the sprint section of `plan.md` plus `handoff.md` summarizing
-  what was produced, what assumptions were made, what is still open,
-  and what the next sprint should tackle.
-- Works sprint-by-sprint. MUST NOT self-grade.
-- Communicates only via files.
-
-### Evaluator
-- Input: `spec.md`, the current sprint contract, and the Generator's
-  sprint output.
-- Output: `critique.md` with a score per criterion (1–5) and
-  line-level feedback citing the artifact.
-- Actively probes: runs the numbers, stress-tests assumptions, checks
-  named comparables, looks for missing stakeholders, penalizes
-  boilerplate.
-- Returns failing sprints to the Generator with a revision list.
-  Advances to the next contract only on pass.
-- Must not talk itself out of legitimate issues. If a concern is
-  raised, it must be logged, even if minor.
+- **reset ≠ compaction**: under context pressure the recovery path is `handoff.md` + a fresh session, not compaction. Compaction preserves the anxiety state, so it is **forbidden** as a recovery path. Context anxiety is rare on Opus 4.8, but follow this rule when it occurs.
+- **Every component encodes an assumption**: each component of this harness encodes an assumption about "something the model can't do alone." Here the sprint structure's assumption is "research/financial quality must be gated before synthesis." On model upgrade, validate assumptions **one at a time** — remove one component at a time and measure (radical all-at-once removal failed; methodical one-at-a-time succeeded).
+- **GAN separation**: Generator and Evaluator are split into separate `Agent`s precisely to structurally counter self-evaluation bias (an LLM's tendency to confidently praise mediocre work — especially optimistic financials).
+- **Simplicity first** (Anthropic, "Building Effective Agents"): "find the simplest solution possible, and only increase complexity when needed." This skill choosing Full is not a violation of simplicity — it's for the orthogonal need of research/financial gating, and it simplifies once that need disappears.
+- **Evidence or ASSUMPTION**: every numeric claim (market size, growth rate, conversion, CAC, LTV, price, cost) is either sourced or explicitly labeled `ASSUMPTION:`. An unlabeled invented number is a defect, not a fact. This is a first-class quality bar (probe + G-d), not optional polish.
+- **Infographic-first**: content with structure (hierarchy·flow·relationship·timeline·comparison·state·money flow) is conveyed first through **the visual that best holds the concept**, not a prose/table wall — BMC·mind map·money-flow (Sankey)·unit-economics chart·TAM/SAM/SOM concentric·ecosystem map·competition matrix·positioning scatter·funnel·journey·Gantt·cap-table stack·risk heatmap·KPI gauge, and when no standard diagram fits, **invent a topic-specific visualization** (gate G-g). Diagrams are the primary medium, not decoration. **3-tier visualization production (use the highest available)**:
+  1. **Image generation (when possible)** — persona webtoon panels·ecosystem illustrations·concept heroes·scenario scenes. Save to `docs/assets/`, reference from md (`![](assets/…)`)·HTML. Fall back to tier 2 if unavailable.
+  2. **Inline SVG/CSS infographics** — the primary visual medium for HTML output (readable + dashboard). Hand-author data-driven charts·matrices·flows·ecosystem maps·money flows·Gantt·cap tables in SVG/CSS. **Zero external dependencies** (Mermaid discouraged — self-contained·offline·design control first).
+  3. **ASCII diagrams + matrix tables** — portable visualization in the md body (no renderer needed). The md always carries this tier or above.
+  - **Every document, not just the dashboard — comprehensively**: the infographic-first bar applies to **every deliverable** and to **every per-document readable HTML**, not only `overview.html`. Each `NN-name.html` visualizes **every major section/concept** of that document — typically **several** best-fit **inline SVG/CSS infographics** per page. Existing ASCII diagrams in the `.md` are **CONVERTED to inline-SVG graphics** in the HTML (raw ASCII kept only inside a collapsed `<details>`). A faithful text/ASCII-only conversion with zero inline `<svg>` fails the bar.
+- **Plain language over jargon (쉬운 설명 우선)**: prefer plain, everyday wording over jargon. When a finance/business term is unavoidable, gloss it in one short clause the first time (e.g. "ARPU(가입자 1명당 평균 매출)", "LTV(고객 1명이 평생 가져다주는 매출)", "BEP(손익분기점 — 버는 돈과 쓰는 돈이 같아지는 시점)", "런웨이(지금 자금으로 버틸 수 있는 개월 수)"). Calibrate to the broadest stakeholder who must read the doc (심사역·경영·비전문 투자자 as well as 재무). Visual labels, captions, and infographics follow the same rule. This is an explicit quality bar (adversarial probe + Definition-of-Done item), not optional polish.
+- **Financial-coherence defaults (business common sense)**: when building the business model / financial model, apply sound defaults instead of naive ones:
+  - **Money rules in one place.** Revenue / fees / pricing / unit economics are defined once in `00-business-model` (Mode 5) or the business-model section (Modes 1–4); downstream documents (pricing, financial model, funding) reference it — no redefinition or contradiction (G-h).
+  - **Bottom-up, not just top-down.** Don't size the opportunity only as "1% of a huge TAM"; tie revenue to a concrete acquisition funnel (channel → reachable users → conversion → ARPU). Top-down-only sizing is a finding.
+  - **Internal consistency.** Revenue = price × volume; BEP, runway, and cash-flow are arithmetically consistent with the unit economics; the funding ask matches the use-of-funds and the runway it buys. A model whose totals don't reconcile is a G-h defect.
+  These are first-class **findings the Evaluator flags** — a plan with contradictory money rules, top-down-only sizing, or non-reconciling totals is downgraded.
+- **Ecosystem lens**: analysis does not stop at a single customer / single competitor but describes **the whole ecosystem (value network) the business sits in and all its participants** — supply/demand side, platforms·intermediaries, complement·substitute providers, regulators·institutions, payment·infrastructure·channel·data partners. Identify each participant's role·incentive·value exchange·dependency and visualize it as an **ecosystem map (stakeholder / value-network diagram)** (S1·02-market·03-competition-ecosystem). This is the foundation for the differentiation (C2)·moat·platform two-sidedness argument.
 
 ---
 
-## Grading Criteria (applied every cycle, 1–5 each)
+## V1 vs V2 guidance (per model)
 
-- **Strategic coherence** — problem, solution, customer, business model,
-  and GTM reinforce each other.
-- **Originality & insight** — reflects non-obvious judgment about this
-  specific topic, not generic startup boilerplate.
-- **Craft & rigor** — numbers internally consistent; claims sourced or
-  explicitly labeled `ASSUMPTION:`; writing precise.
-- **Executability** — a founding team could act on this next week;
-  first moves, owners, and success metrics are concrete.
+This skill is **Full tier (the V1 line)**. Recommended tier by model class:
 
-Weighting: emphasize strategic coherence and originality over craft and
-executability, mirroring the source article's weighting of design
-quality and originality. A sprint is "done" only when every criterion
-scores ≥4 and no criterion has an unresolved blocker.
+| Model class | Context anxiety | Recommended tier | Notes |
+|-------------|----------------|-----------------|-------|
+| **Sonnet 4.5** | Strong — wraps up prematurely | Full (V1) | Small sprints, aggressive Evaluator, firm context resets |
+| **Opus 4.5** | Largely eliminated | Simplified (V2) | Multi-hour coherent sessions; sprint decomposition droppable |
+| **Opus 4.6** | Eliminated; improved planning, long-context, debugging | Simplified or Single-session | 2+ hour builds sustainable; re-examine every component, drop what's not load-bearing |
+| **Opus 4.8** | Eliminated (1M context) | Simplified by default — BUT this skill chooses Full deliberately | Full chosen NOT for context relief but for research-phase decomposition + per-sprint quality gating (S1–S3 research/financials gated before S4 synthesis). Stress-test on upgrade (G-1/G-2): can the model self-organize the 4 research phases + self-gate quality without sprint contracts? If yes, drop sprints one at a time. |
 
----
+### Opus 4.8: Full vs Simplified justification (G-1/G-2)
+Opus 4.8 (1M context) has effectively eliminated context anxiety — from a context standpoint the sprint structure is redundant, so the source recommends **Simplified** by default. But here **Full was chosen deliberately.** Reason: this sprint structure is not a context-relief device but an **orthogonal mechanism** — research-phase decomposition + per-phase quality gating (S4 synthesizes the plan on top of S1–S3 research/financials only after the Evaluator passes it through gates). A strong model does not lose this gating's benefit (assumption: "research/financial quality must be gated before synthesis" — model strength does not invalidate it; an LLM left ungated still drifts to optimistic, non-reconciling financials).
 
-## Default Sprint Sequence (Planner may adapt)
-
-1. Discovery — problem, customer, pain evidence, comparables.
-2. Value & positioning — value prop, differentiation, wedge.
-3. Business model — pricing, unit economics, revenue model.
-4. GTM — acquisition channels, first 100 customers, motion.
-5. Operations & team — build vs. buy, org, hiring plan.
-6. Financials & milestones — 18-month plan, runway, KPIs.
-7. Risk & kill-criteria — what would make you stop, and when.
-8. Consolidation — assemble `final_plan.md` from passed sprints.
-
-If the user's topic is narrow and the user opts in, collapse to a
-single-pass evaluator at the end (mirroring the Opus-4.6 simplification
-in the source).
+**Upgrade stress-test (G-1/G-2, one at a time)**: "Can the model self-organize the 4 research phases and self-gate quality (incl. financial coherence) without explicit sprint contracts?" If YES, remove the sprint structure **one sprint/contract at a time** and re-measure — don't remove it all at once (radical removal failed; methodical one-at-a-time succeeded). The harness space doesn't shrink, it shifts — re-examine what's load-bearing on every upgrade.
 
 ---
 
-## Execution Protocol
+## Evaluator tuning workflow
 
-1. Confirm `{{BUSINESS_TOPIC}}` with the user in one sentence.
-2. Enter the **Planner** role, produce `spec.md` and the full sprint
-   contract list, then stop and await the user's go signal.
-3. For each sprint:
-   a. Generator produces the sprint output and writes `handoff.md`.
-   b. Evaluator scores against the criteria and writes `critique.md`.
-   c. If any criterion fails, Generator revises (up to 5 revision loops
-      per sprint). If it still fails, Planner renegotiates the contract
-      with a written rationale.
-   d. On pass, reset the Generator's working context using `handoff.md`
-      and advance.
-4. After Consolidation, produce `final_plan.md` and
-   `assumptions_and_risks.md` listing every unverified claim the plan
-   depends on.
-5. Before claiming the run is complete, re-examine whether any sprint
-   was included only out of habit — strip away non-load-bearing
-   sprints (the source article's "stress-test every assumption"
-   principle).
+An untuned Evaluator is too lenient. Treat the first runs as drafts and calibrate via this **operating loop** (G-4/P-3). Don't settle for a one-sentence acknowledgment — actually run (a)–(d):
 
-## Working Directory
-Create `business-plan/` in the current working directory (or one the
-user specifies) and write all artifacts there with the filenames above.
+- **(a) Read critique logs** — read completed runs' `critique.md` side by side with the actual deliverables. For each rubric score, ask: "Would a demanding VC partner / startup-program judge give the same score?"
+- **(b) Identify divergence patterns** — pinpoint the divergence patterns. Typical: lenient scoring (accepting generic/shallow output as adequate), accepting top-down-only market sizing, passing optimistic non-reconciling financials, passing non-measurable KPIs, passing abstract customers on C1, accepting "more convenient/cheaper" as differentiation on C2.
+- **(c) Update prompt or calibration with counter-examples** — add **concrete counter-examples** targeting that failure mode to `references/evaluator-prompt.md` or `references/evaluator-calibration.md` (e.g. "a TAM cited with no SAM/SOM bottom-up basis is 2/5, not 5/5"). Few-shot calibration reduces score drift.
+- **(d) Rerun on the same input; confirm the catch** — rerun on the same input and confirm the Evaluator now catches the prior miss. If it does, lock that calibration.
 
-## Output Requirements
-- All outputs are Markdown with explicit headings.
-- Every numeric claim is sourced or labeled `ASSUMPTION:`.
-- Every sprint ends with a handoff file, even if the next sprint is
-  obvious.
-- Never silently drop a failing criterion to advance — surface it.
-- Final deliverables: `spec.md`, per-sprint sections in `plan.md`, the
-  `critique.md` history, `final_plan.md`, and `assumptions_and_risks.md`.
+Skipping any of (a)–(d) is not tuning. Iterate until the Evaluator's verdicts correlate with a careful human-expert pass and every blocking issue it raises is reproducible (expect several cycles).
+
+---
+
+## §8 domain verification gates (binary)
+
+All 8 binary gates must pass before the final PASS (Generator self-checks before S4 handoff; Evaluator verifies at STEP 4c/STEP 5). Details in `references/sprint-playbook.md` / `references/evaluator-prompt.md`.
+
+| Gate | Check | PASS / FAIL |
+|------|-------|-------------|
+| G-a value↔problem trace | every core value/offering maps to a specific customer problem | every offering linked to ≥1 problem / any unmapped offering |
+| G-b customer specificity | ≥1 persona includes situation·pain points (frequency/consequence) | situation·context·pain points stated / abstract demographics only |
+| G-c explicit differentiation comparison | explicit comparison vs ≥1 real competitor + comparison axis + moat argument | competitor name + axis + why-hard-to-imitate present / unspecified or "it's better"-style |
+| G-d metric & financial measurability | every KPI/financial number has a value + measurement/derivation method, and every assumed number is sourced or labeled `ASSUMPTION:` | each metric has number·method·period AND every number sourced or `ASSUMPTION:`-labeled / any non-measurable metric or unlabeled invented number |
+| G-e scope / phase separation | MVP·Phase1 / out-of-scope·later-phase explicitly separated (incl. use-of-funds scope) | separation present / no separation or ambiguous |
+| G-f no placeholders | placeholder/TBD/empty cells = 0 | scan finds 0 / any |
+| G-g infographic fit | a document with structure (hierarchy·flow·relationship·timeline·comparison·money flow) expresses that structure as a diagram/infographic. **+ every per-document readable HTML visualizes each major section — typically several inline-SVG/CSS infographics per page (not just one, not just the dashboard).** | each structured document embeds ≥1 concept-appropriate visualization (image/inline SVG/ASCII/matrix) AND each `NN-name.html` carries a visualization for each major section (several inline `<svg>`) / structure left as a text wall, a per-doc HTML with zero inline `<svg>` (ASCII-in-`<pre>` only) or a single token diagram while other major sections stay text walls, any empty diagram, or dependence on an external renderer such as Mermaid |
+| G-h financial coherence | financial numbers are internally consistent and money rules are single-sourced | revenue = price × volume; BEP·runway·cash-flow reconcile with unit economics; funding ask matches use-of-funds + runway; money rules defined once in 00/business-model and only referenced elsewhere / any contradiction, non-reconciling total, or duplicated/conflicting money rule |
+
+---
+
+## File handoffs (file-based communication, full set)
+
+Roles communicate only through files. Active files:
+`spec.md`·`sprint-playbook.md` (Planner→) / `sprint_contract.md` (Generator⇄Evaluator, per sprint) / `research-s1.md`·`research-s2.md`·`research-s3.md` (sprint deliverables, read by later sprints) / `business-plan.md` (S4 final, or `docs/` 16 docs for Mode 5) / `generator_report.md`·`critique.md` (per sprint + final) / `handoff.md` (Generator → fresh Generator, under context pressure) / `assumptions_and_risks.md` (final, every unverified/ASSUMPTION-labeled claim).
+
+Each role is dispatched as a fresh `Agent` call reading only its handoff files. The Planner runs once; the Generator and Evaluator alternate within each sprint + across the 4 sprints.
+
+---
+
+## Out-of-scope
+Code debugging ("fix this React component bug"), content writing ("write a blog post"), and pure service/dev specs (PRD·IA·ERD·API·wireframes — that is `service-planning-harness`) are not business-plan production, so this skill does not activate for them. Activate only when matching the description's triggers (business plan / startup plan / investor IR / BMC / business-model validation, etc.).
