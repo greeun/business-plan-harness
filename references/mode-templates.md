@@ -241,3 +241,27 @@ S1 is expanded (market/competition/ecosystem → 02 · 03), S3 is heaviest (busi
 | 3 Investor IR plan | **expanded** — TAM/SAM/SOM (bottom-up) / segments / trends / regulation + ecosystem analysis/map | personas | **heaviest** — 3–5yr P&L / CAC·LTV / BEP / sensitivity / funding ask | Mode 3 structure | triggered |
 | 4 Gov-grant · startup-program form | at least 1 named competitor + ecosystem map | key persona + problem evidence | 수익모델 + 사업비 집행계획 (budget/use-of-funds) | Mode 4 (form) structure | triggered if a budget/financial block is included (almost always) |
 | 5 Full business plan package | **expanded** (TAM/SAM/SOM + competitor matrix + ecosystem analysis/map → 02 · 03 docs) | multiple personas (→ 04 doc) | **heaviest** (00 unit economics + 30 3–5yr model + 31 funding → 00 · 30 · 31 docs) | **multiple documents ~16 types** (S4 expands per deliverable group) | almost always triggered (financial model + funding included) |
+
+---
+
+## Nonprofit / public-interest variant (비영리·공익단체 변형)
+
+> When the venture is a **nonprofit, arts/culture org, foundation, social enterprise, or grant-funded body** (no equity to sell), the harness runs unchanged — only the *interpretation* of a few slots shifts. Keep the same 16 deliverables, gates, and 4 sprints. Validated on a real run (a nonprofit ballet company's economic-revitalization plan).
+
+| Slot | For-profit default | Nonprofit reading |
+|------|--------------------|-------------------|
+| Goal frame | profit / ROI | **revenue diversification → deficit reduction → 재정 자립도(self-sufficiency) → mission continuity**. Never "ROI." |
+| BEP (G-h) | revenue > cost (profit) | **수입 ⊇ 지출** (break-even / deficit→0); "BEP" = the year the income mix covers spending |
+| 00 money rules (수입원) | revenue streams | **4대 수입원: 공연/판매수입 · 공적지원(공모·보조금) · 후원·기부(개인 정기 + 기업 메세나/CSR) · 교육·부대사업**. Single-source still in 00. |
+| C3 unit economics | unit profit, CAC/LTV | **per-event funding-gap** (제작비 − 티켓수입 = 갭 + 충당원 명시) + donor LTV:CAC + **자립도 비중 전환**. A structurally loss-making event funded by grants/donations is normal, not a defect — the gap's *stable funding* is the model. |
+| Mode 3 "Investor IR" | equity raise / cap table | **후원·지원사업 유치 IR** (후원자·지원기관 설득). `31` cap-table/exit → **use-of-funds + 자립 로드맵 + 매칭 의지**. |
+| Mode 4 "Gov-grant form" | startup-program app | maps natively to **공모 신청서** (아르코·문화재단·문체부 평가항목: 문제·실현가능성·성장성·팀·사업비). |
+| `31-funding-plan` | VC/loan/equity | **공적지원 캘린더 · 기업 메세나(1+1 매칭) · 개인 정기후원 · 지정기부금(공익법인 세액공제) · 사회적기업 전환 · 크라우드펀딩**. No equity. |
+| `22-team-org` gap | sales/BD hire | **Development(모금·후원개발) 전담** — usually the biggest org gap; justify by self-funding (한 명이 인건비 이상 모금). |
+| Differentiation moat (C2/G-c) | tech/network/brand | **사회적 가치(취약계층·공익 임팩트)** + 전달망 + 지역거점 — and these unlock 지정기부금·메세나·사회적기업 자격 (자금조달 자산). |
+| Ecosystem (S1/03) | suppliers/channels | + **후원개인 · 기업메세나 · 공적지원기관 · 위탁 지자체 · 산하법인 · 언론** as value-network participants. |
+| STEP 7 checkpoint | revenue/cost assumptions | **연 예산 규모 · 수입 구성비 · 편당 제작비 · 현 후원 현황 · 공익법인(지정기부금) 등록 여부 · 런웨이** — confirm with the org (these depend on real books, not benchmarks). |
+
+Visualization adds: **수입믹스 전환 누적막대(자립도 ↑)** · **공모 신청 캘린더 타임라인** · **메세나 매칭 레버리지(1+1)** · **후원자 0→N 펀넬**. Drop equity-only visuals (cap table) unless a for-profit subsidiary exists.
+
+Rule of thumb: if the body cannot issue equity, read "investor" as "funder/donor/grantmaker," "ROI" as "자립도 + 사회적 성과," and keep everything else. The §8 gates (esp. G-d ASSUMPTION labels, G-h coherence) matter *more* here because nonprofit financials are benchmark-thin and easily optimistic.
